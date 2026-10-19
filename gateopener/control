@@ -1,10 +1,9 @@
-{
-    "name": "GateOpener",
-    "identifier": "com.gateopener.tweak",
-    "version": "1.0.0",
-    "description": "门禁一键开门插件",
-    "depends": [
-        "mobilesubstrate"
-    ],
-    "architecture": "iphoneos-arm64"
-}
+Package: com.gateopener.tweak
+Name: GateOpener
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 门禁一键开门插件
+Section: Tweaks
+Depends: mobilesubstrate
+Author: Administrator
+Maintainer: Administrator
