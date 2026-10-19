@@ -1,8 +1,8 @@
 Package: com.gateopener.tweak
 Name: GateOpener
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64
-Description: 门禁一键开门插件
+Description: 门禁一键开门插件-修复小程序注入
 Section: Tweaks
 Depends: mobilesubstrate
 Author: Administrator
