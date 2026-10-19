@@ -236,7 +236,7 @@ static UIWindow *keyWindow = nil;
                          base64TokenAppKey, timestamp, randomStr, accessToken, @"client", hashKey];
     NSString *sign = [self sha256:signRaw];
 
-    NSString *authorization = [NSString stringWithFormat:@"6e0044e0040de0020b6%@%@%@%@%@%@accessTokenclient",
+    NSString *authorization = [NSString stringWithFormat:@"6e0044e0040de0020b6%@%@%@%@%@accessTokenclient",
                                base64TokenAppKey, sign, timestamp, randomStr, accessToken];
 
     NSMutableDictionary *bodyDict = [NSMutableDictionary dictionary];
