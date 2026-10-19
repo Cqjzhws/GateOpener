@@ -1,0 +1,34 @@
+name: Build GateOpener
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Install iOS SDK
+        run: |
+          curl -LO https://github.com/xybp888/iOS-SDKs/raw/master/iPhoneOS16.5.sdk.zip
+          unzip -q iPhoneOS16.5.sdk.zip
+          mv iPhoneOS16.5.sdk $HOME/theos/sdks/
+
+      - name: Build
+        run: |
+          cd gateopener
+          make clean package FINALPACKAGE=1
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: GateOpener-deb
+          path: gateopener/packages/*.deb
