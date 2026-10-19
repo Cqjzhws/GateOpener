@@ -4,12 +4,13 @@
 #import <CommonCrypto/CommonCrypto.h>
 
 static UIButton *floatingButton = nil;
-static UIWindow *keyWindow = nil;
+static UIWindow *lastKeyWindow = nil;
 
 @interface GateOpenerManager : NSObject
 + (instancetype)shared;
 - (void)showDoorSelector;
 - (void)handlePan:(UIPanGestureRecognizer *)pan;
+- (void)tryAddButtonToAllWindows;
 @end
 
 @implementation GateOpenerManager
@@ -53,9 +54,36 @@ static UIWindow *keyWindow = nil;
     return [data base64EncodedStringWithOptions:0];
 }
 
+- (UIWindow*)findKeyWindow {
+    UIWindow *keyWindow = nil;
+    if (@available(iOS 13.0, *)) {
+        NSSet<UIScene *> *scenes = [UIApplication sharedApplication].connectedScenes;
+        for (UIScene *scene in scenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *window in windowScene.windows) {
+                    if (window.isKeyWindow) {
+                        keyWindow = window;
+                        break;
+                    }
+                }
+                if (!keyWindow && windowScene.windows.count > 0) {
+                    keyWindow = windowScene.windows.firstObject;
+                }
+            }
+        }
+    } else {
+        keyWindow = [UIApplication sharedApplication].keyWindow;
+    }
+    if (!keyWindow) {
+        keyWindow = [UIApplication sharedApplication].windows.firstObject;
+    }
+    return keyWindow;
+}
+
 - (void)showToast:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *window = [UIApplication sharedApplication].keyWindow;
+        UIWindow *window = [self findKeyWindow];
         if (!window) return;
 
         UILabel *label = [[UILabel alloc] init];
@@ -97,14 +125,15 @@ static UIWindow *keyWindow = nil;
 }
 
 - (void)showDoorSelector {
-    keyWindow = [UIApplication sharedApplication].keyWindow;
-    if (!keyWindow) {
+    UIWindow *window = [self findKeyWindow];
+    if (!window) {
         [self showToast:@"无法获取窗口"];
         return;
     }
+    lastKeyWindow = window;
 
     WKWebView *webView = nil;
-    for (UIView *view in keyWindow.subviews) {
+    for (UIView *view in window.subviews) {
         webView = [self findWebViewInView:view];
         if (webView) break;
     }
@@ -138,7 +167,7 @@ static UIWindow *keyWindow = nil;
 
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
 
-    UIViewController *topController = keyWindow.rootViewController;
+    UIViewController *topController = window.rootViewController;
     while (topController.presentedViewController) {
         topController = topController.presentedViewController;
     }
@@ -302,70 +331,98 @@ static UIWindow *keyWindow = nil;
 }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
-    if (!floatingButton || !keyWindow) return;
+    if (!floatingButton) return;
+    UIWindow *window = floatingButton.window;
+    if (!window) return;
 
-    CGPoint translation = [pan translationInView:keyWindow];
+    CGPoint translation = [pan translationInView:window];
     CGPoint center = floatingButton.center;
     center.x += translation.x;
     center.y += translation.y;
 
     CGFloat halfWidth = floatingButton.bounds.size.width / 2;
     CGFloat halfHeight = floatingButton.bounds.size.height / 2;
-    center.x = MAX(halfWidth + 10, MIN(keyWindow.bounds.size.width - halfWidth - 10, center.x));
-    center.y = MAX(halfHeight + 60, MIN(keyWindow.bounds.size.height - halfHeight - 60, center.y));
+    center.x = MAX(halfWidth + 10, MIN(window.bounds.size.width - halfWidth - 10, center.x));
+    center.y = MAX(halfHeight + 60, MIN(window.bounds.size.height - halfHeight - 60, center.y));
 
     floatingButton.center = center;
-    [pan setTranslation:CGPointZero inView:keyWindow];
+    [pan setTranslation:CGPointZero inView:window];
 
     if (pan.state == UIGestureRecognizerStateEnded) {
         [UIView animateWithDuration:0.2 animations:^{
             CGPoint center = floatingButton.center;
-            if (center.x < keyWindow.bounds.size.width / 2) {
+            if (center.x < window.bounds.size.width / 2) {
                 center.x = 38;
             } else {
-                center.x = keyWindow.bounds.size.width - 38;
+                center.x = window.bounds.size.width - 38;
             }
             floatingButton.center = center;
         }];
     }
 }
 
-@end
-
-static void createFloatingButton() {
+- (void)tryAddButtonToAllWindows {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (floatingButton) return;
 
-        keyWindow = [UIApplication sharedApplication].keyWindow;
-        if (!keyWindow) return;
+        UIWindow *targetWindow = nil;
+
+        if (@available(iOS 13.0, *)) {
+            NSSet<UIScene *> *scenes = [UIApplication sharedApplication].connectedScenes;
+            for (UIScene *scene in scenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *window in windowScene.windows) {
+                        if (window.isKeyWindow) {
+                            targetWindow = window;
+                            break;
+                        }
+                    }
+                    if (!targetWindow && windowScene.windows.count > 0) {
+                        targetWindow = windowScene.windows.firstObject;
+                    }
+                }
+            }
+        } else {
+            targetWindow = [UIApplication sharedApplication].keyWindow;
+        }
+
+        if (!targetWindow) {
+            targetWindow = [UIApplication sharedApplication].windows.firstObject;
+        }
+
+        if (!targetWindow) return;
 
         floatingButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        floatingButton.frame = CGRectMake(keyWindow.bounds.size.width - 76, keyWindow.bounds.size.height - 220, 56, 56);
+        floatingButton.frame = CGRectMake(targetWindow.bounds.size.width - 76, targetWindow.bounds.size.height - 220, 56, 56);
         floatingButton.backgroundColor = [UIColor colorWithRed:0.15 green:0.6 blue:1.0 alpha:0.9];
         floatingButton.layer.cornerRadius = 28;
         floatingButton.layer.shadowColor = [UIColor blackColor].CGColor;
         floatingButton.layer.shadowOffset = CGSizeMake(0, 2);
         floatingButton.layer.shadowOpacity = 0.3;
         floatingButton.layer.shadowRadius = 6;
+        floatingButton.tag = 88888;
 
         [floatingButton setTitle:@"🚪" forState:UIControlStateNormal];
         floatingButton.titleLabel.font = [UIFont systemFontOfSize:26];
 
-        [floatingButton addTarget:[GateOpenerManager shared] action:@selector(showDoorSelector) forControlEvents:UIControlEventTouchUpInside];
+        [floatingButton addTarget:self action:@selector(showDoorSelector) forControlEvents:UIControlEventTouchUpInside];
 
-        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:[GateOpenerManager shared] action:@selector(handlePan:)];
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [floatingButton addGestureRecognizer:pan];
 
-        [keyWindow addSubview:floatingButton];
+        [targetWindow addSubview:floatingButton];
     });
 }
+
+@end
 
 %hook AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     BOOL result = %orig;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        createFloatingButton();
+        [[GateOpenerManager shared] tryAddButtonToAllWindows];
     });
     return result;
 }
@@ -377,7 +434,25 @@ static void createFloatingButton() {
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
     %orig;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        createFloatingButton();
+        [[GateOpenerManager shared] tryAddButtonToAllWindows];
+    });
+}
+
+%end
+
+%hook UIWindow
+
+- (void)makeKeyAndVisible {
+    %orig;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [[GateOpenerManager shared] tryAddButtonToAllWindows];
+    });
+}
+
+- (void)becomeKeyWindow {
+    %orig;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [[GateOpenerManager shared] tryAddButtonToAllWindows];
     });
 }
 
