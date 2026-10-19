@@ -221,7 +221,7 @@ static UIWindow *lastKeyWindow = nil;
         [request setValue:@"application/json;charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
         [request setValue:cookieStr forHTTPHeaderField:@"Cookie"];
         [request setValue:@"https://w.shequ.189.cn/communityFw/h5/index.html" forHTTPHeaderField:@"Referer"];
-        [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.58(0x18003a25) NetType/WIFI Language/zh_CN" forHTTPHeaderField:@"User-Agent"];
+        [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.58(0x18003a25) NetType/WIFI Language/zh_CN miniProgram/wx4519fa47e7d509b7" forHTTPHeaderField:@"User-Agent"];
 
         NSURLSession *session = [NSURLSession sharedSession];
         NSURLSessionDataTask *task = [session dataTaskWithRequest:request
@@ -239,6 +239,14 @@ static UIWindow *lastKeyWindow = nil;
                     return;
                 }
 
+                // 检查code是否为10000（成功）
+                NSNumber *code = json[@"code"];
+                if (!code || [code intValue] != 10000) {
+                    NSString *msg = json[@"msg"] ?: @"未知错误";
+                    completion([NSString stringWithFormat:@"getCookie失败: %@", msg]);
+                    return;
+                }
+
                 NSDictionary *dataDict = json[@"data"];
                 NSString *hashKey = dataDict[@"hashKey"];
                 if (!hashKey) {
@@ -246,26 +254,31 @@ static UIWindow *lastKeyWindow = nil;
                     return;
                 }
 
-                [self openDoorWithToken:accessToken appKey:appKey localId:localId hashKey:hashKey deviceId:deviceId source:source completion:completion];
+                // 获取服务器时间（如果返回了的话）
+                NSNumber *serverTime = dataDict[@"time"];
+                NSString *timestamp = serverTime ? [serverTime stringValue] : [self getCurrentTimestamp];
+
+                [self openDoorWithToken:accessToken appKey:appKey localId:localId hashKey:hashKey timestamp:timestamp deviceId:deviceId source:source completion:completion];
             });
         }];
         [task resume];
     }];
 }
 
-- (void)openDoorWithToken:(NSString *)accessToken appKey:(NSString *)appKey localId:(NSString *)localId hashKey:(NSString *)hashKey deviceId:(NSString *)deviceId source:(NSString *)source completion:(void (^)(NSString *))completion {
+- (void)openDoorWithToken:(NSString *)accessToken appKey:(NSString *)appKey localId:(NSString *)localId hashKey:(NSString *)hashKey timestamp:(NSString *)timestamp deviceId:(NSString *)deviceId source:(NSString *)source completion:(void (^)(NSString *))completion {
 
-    NSString *timestamp = [self getCurrentTimestamp];
-    NSString *randomStr = [self generateRandomString:32];
+    NSString *randomStr = [self generateRandomString:30];  // 注意：随机串是30位
 
     NSString *tokenAppKey = [NSString stringWithFormat:@"%@@%@", accessToken, appKey];
     NSString *base64TokenAppKey = [self base64Encode:tokenAppKey];
 
+    // 签名原始数据：base64(token@appKey) + time + random + accessToken + "xcxclient" + hashKey
     NSString *signRaw = [NSString stringWithFormat:@"%@%@%@%@%@%@",
-                         base64TokenAppKey, timestamp, randomStr, accessToken, @"client", hashKey];
+                         base64TokenAppKey, timestamp, randomStr, accessToken, @"xcxclient", hashKey];
     NSString *sign = [self sha256:signRaw];
 
-    NSString *authorization = [NSString stringWithFormat:@"6e0044e0040de0020b6%@%@%@%@%@accessTokenclient",
+    // authorization: 6e0044e0040de0020b9 + base64TokenAppKey + sign + timestamp + randomStr + accessToken + "xcxclient"
+    NSString *authorization = [NSString stringWithFormat:@"6e0044e0040de0020b9%@%@%@%@%@accessTokenxcxclient",
                                base64TokenAppKey, sign, timestamp, randomStr, accessToken];
 
     NSMutableDictionary *bodyDict = [NSMutableDictionary dictionary];
@@ -273,6 +286,8 @@ static UIWindow *lastKeyWindow = nil;
     bodyDict[@"communityId"] = @([localId intValue]);
     if (source && source.length > 0) {
         bodyDict[@"source"] = source;
+    } else {
+        bodyDict[@"source"] = [NSNull null];
     }
 
     NSError *error;
@@ -288,12 +303,13 @@ static UIWindow *lastKeyWindow = nil;
     [request setHTTPBody:bodyData];
     [request setValue:@"application/json;charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
     [request setValue:authorization forHTTPHeaderField:@"Authorization"];
-    [request setValue:@"wxd71326872df0d3e5" forHTTPHeaderField:@"wx-appid"];
-    [request setValue:@"client" forHTTPHeaderField:@"type"];
+    [request setValue:@"wx4519fa47e7d509b7" forHTTPHeaderField:@"wx-appid"];
+    [request setValue:@"xcxclient" forHTTPHeaderField:@"type"];
     [request setValue:@"https://w.shequ.189.cn/communityFw/h5/index.html" forHTTPHeaderField:@"Referer"];
-    [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.58(0x18003a25) NetType/WIFI Language/zh_CN" forHTTPHeaderField:@"User-Agent"];
+    [request setValue:@"https://w.shequ.189.cn" forHTTPHeaderField:@"Origin"];
+    [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.58(0x18003a25) NetType/4G Language/zh_CN miniProgram/wx4519fa47e7d509b7" forHTTPHeaderField:@"User-Agent"];
 
-    NSString *cookieStr = [NSString stringWithFormat:@"accessToken=%@; appKey=%@; localId=%@; type=client",
+    NSString *cookieStr = [NSString stringWithFormat:@"accessToken=%@; appKey=%@; localId=%@; type=xcxclient",
                            accessToken, appKey, localId];
     [request setValue:cookieStr forHTTPHeaderField:@"Cookie"];
 
@@ -314,7 +330,8 @@ static UIWindow *lastKeyWindow = nil;
                 NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
                 if (!jsonError && json) {
                     NSString *msg = json[@"msg"] ?: @"未知";
-                    if ([msg isEqualToString:@"成功"]) {
+                    NSString *code = json[@"code"];
+                    if ([msg isEqualToString:@"成功"] || [code isEqualToString:@"1"]) {
                         completion(@"✅ 开门成功！");
                     } else {
                         completion([NSString stringWithFormat:@"开门结果: %@", msg]);
