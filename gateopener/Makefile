@@ -7,6 +7,6 @@ TWEAK_NAME = GateOpener
 
 GateOpener_FILES = Tweak.xm
 GateOpener_FRAMEWORKS = UIKit Foundation WebKit
-GateOpener_CFLAGS = -fobjc-arc
+GateOpener_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 
 include $(THEOS_MAKE_PATH)/tweak.mk
