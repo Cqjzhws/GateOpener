@@ -21,6 +21,10 @@ jobs:
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           ln -sf "$SDK_PATH" $HOME/theos/sdks/iPhoneOS.sdk
 
+      - name: Install ldid
+        run: |
+          brew install ldid
+
       - name: Build
         run: |
           cd gateopener
